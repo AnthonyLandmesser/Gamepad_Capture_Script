@@ -2,6 +2,7 @@ import sys
 import subprocess
 import av
 import cv2
+import time
 
 INTERFACE = 'wlp0s20u4'
 CHANNEL = 157
@@ -11,9 +12,9 @@ TSHARK_PATH = '/run/current-system/sw/bin/tshark'
 
 # Put wireless adapter in monitor mode
 def setup_monitor_mode():
-    subprocess.run(['sudo', 'airmon-ng', 'check', 'kill'], check=True)
-    subprocess.run(['sudo', 'airmon-ng', 'start', f'{INTERFACE}', f'{CHANNEL}'], check=True)
-    subprocess.run(['sudo', 'iw', 'dev', f'{INTERFACE}', 'set', 'monitor', 'fcsfail'], check=True)
+    subprocess.run(f'sudo airmon-ng check kill'.split(' '), check=True)
+    subprocess.run(f'sudo airmon-ng start {INTERFACE} {CHANNEL}'.split(' '), check=True)
+    subprocess.run(f'sudo iw dev {INTERFACE} set monitor fcsfail control otherbss'.split(' '), check=True)
 
 # Setup H.264 decoder
 def setup_codec():
@@ -29,6 +30,9 @@ def setup_codec():
     parameter_sets = CODEC.parse(FRAME_START + SPS_HEADER + FRAME_START + PPS_HEADER)
 
 # Helper functions
+def get_sequence_num(payload):
+    return payload[1] + ((payload[0] & 0x03) << 8)
+
 def is_i_frame(payload):
     return payload[8] == 0x80
 
@@ -40,7 +44,7 @@ def is_frame_end(payload):
 
 def get_headers(payload, frame_num):
     if is_i_frame(payload):
-        print("I frame sent")
+        # print("I frame sent")
         return FRAME_START + I_SLICE_HEADER
     else:
         return FRAME_START + bytes([P_SLICE_HEADER[0], P_SLICE_HEADER[1] | (frame_num >> 3), P_SLICE_HEADER[2], P_SLICE_HEADER[3] | (frame_num << 5) & 0xff])
@@ -49,7 +53,7 @@ def get_safe_payload(payload):
     safe_payload = payload[16:18]
     for i in range(18, len(payload)):
         if payload[i] < 3 and safe_payload[-1] == 0 and safe_payload[-2] == 0:
-            print("emulation prevention")
+            #print("emulation prevention")
             safe_payload += bytes([3])
         safe_payload += bytes([payload[i]])
     return safe_payload
@@ -59,11 +63,42 @@ def show_image(parsed_frames):
         decoded_frames = CODEC.decode(parsed_frame)
         for decoded_frame in decoded_frames:
             image = decoded_frame.to_ndarray(format='bgr24')
-            #print(image)
+            #print("image")
             cv2.imshow('Video Stream', image)
             if cv2.waitKey(1) & 0xff == ord('q'):
                 return 1
     return 0
+
+count = 0
+def print_count(output, max):
+    global count
+    if max == count:
+        return
+    print(output)
+    count +=1
+
+def get_bits_int(x, start, end=None):
+    if end == None:
+        end = start + 1
+    n = 0
+    for i in range(start, end):
+        n *= 2
+        n += min(1, x[i//8] & 2**(7-i%8))
+    return n
+
+def print_header(temp):
+    # print(temp.hex())
+    output = f'magic: {get_bits_int(temp, 0, 4)} \n'
+    output += f'packet type: {get_bits_int(temp, 4, 6)} \n'
+    output += f'sequence number: {get_bits_int(temp, 6, 16)} \n'
+    output += f'init flag: {get_bits_int(temp, 16)} \n'
+    output += f'frame begin flag: {get_bits_int(temp, 17)} \n'
+    output += f'chunk end flag: {get_bits_int(temp, 18)} \n'
+    output += f'frame end flag: {get_bits_int(temp, 19)} \n'
+    output += f'timestamp present flag: {get_bits_int(temp, 20)} \n'
+    output += f'payload size: {get_bits_int(temp, 21, 32)} \n'
+    output += f'timestamp: {get_bits_int(temp, 32, 64)} \n'
+    return output + "\n"
 
 # main
 def stream(pcap_file):
@@ -76,30 +111,51 @@ def stream(pcap_file):
     setup_codec()
 
     with subprocess.Popen(capture_command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1) as proc:
-        frame_num = 0
-        go = False
+        print('processing packets')
+
+        frame_num = -1
+        prev_sequence_num = 0
+        gamepad_dropped_packet_count = 0
+        misc_dropped_packet_count = 0
+        monitor_dropped_packet_count = 0
+
+        MAX_FRAME_NUM = 2**10
+        DROPPED_PACKET_INTERVAL = 100
+        
         for line in proc.stdout:
             payload = bytes.fromhex(line)
-            # print(payload)
 
-            if not (is_i_frame(payload) or go):
+            if not (is_i_frame(payload) or frame_num >= 0):
                 continue
+
+            if get_sequence_num(payload) != (prev_sequence_num + 1) % MAX_FRAME_NUM:
+                print(f'gamepad: {gamepad_dropped_packet_count}')
+                print(f'monitor: {monitor_dropped_packet_count}')
+                print(f'misc: {misc_dropped_packet_count}')
+                if get_sequence_num(payload) == prev_sequence_num:
+                    gamepad_dropped_packet_count += 1
+                    continue
+                elif (get_sequence_num(payload) - prev_sequence_num) % MAX_FRAME_NUM < DROPPED_PACKET_INTERVAL:
+                    monitor_dropped_packet_count += 1
+                else:
+                    misc_dropped_packet_count += 1
+                    print(f'{get_sequence_num(payload)} -> {prev_sequence_num}')
+            prev_sequence_num = get_sequence_num(payload)
 
             if is_frame_start(payload):
                 parsed_frames = CODEC.parse(get_headers(payload, frame_num))
             else:
                 parsed_frames = []
 
-            parsed_frames += CODEC.parse(get_safe_payload(payload))
+            CODEC.parse(get_safe_payload(payload))
 
             if (show_image(parsed_frames)):
                 break
 
             if is_frame_end(payload):
-                go = True
                 frame_num += 1
                 frame_num %= 256
-                #print(frame_num)
+                # print(frame_num)
 
 if __name__ == "__main__":
     if len(sys.argv) > 2:
