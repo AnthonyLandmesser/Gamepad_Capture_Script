@@ -12,9 +12,11 @@ TSHARK_PATH = '/run/current-system/sw/bin/tshark'
 
 # Put wireless adapter in monitor mode
 def setup_monitor_mode():
-    subprocess.run(f'sudo airmon-ng check kill'.split(' '), check=True)
-    subprocess.run(f'sudo airmon-ng start {INTERFACE} {CHANNEL}'.split(' '), check=True)
-    subprocess.run(f'sudo iw dev {INTERFACE} set monitor fcsfail control otherbss'.split(' '), check=True)
+    subprocess.run(f'sudo ip link set {INTERFACE} down'.split(' '), check=True)
+    subprocess.run(f'sudo iw dev {INTERFACE} set type monitor'.split(' '), check=True)
+    subprocess.run(f'sudo iw dev {INTERFACE} set monitor fcsfail otherbss'.split(' '), check=True)
+    subprocess.run(f'sudo ip link set {INTERFACE} up'.split(' '), check=True)
+    subprocess.run(f'sudo iw dev {INTERFACE} set channel {CHANNEL}'.split(' '), check=True)
 
 # Setup H.264 decoder
 def setup_codec():
