@@ -1,8 +1,10 @@
 import sys
 import subprocess
+
 import av
 import cv2
-import time
+
+import pyqt
 
 INTERFACE = 'wlp0s20u4'
 CHANNEL = 157
@@ -103,7 +105,7 @@ def print_header(temp):
     return output + "\n"
 
 # main
-def stream(pcap_file):
+def stream(pcap_file=None, video_stream=None):
     if pcap_file:
         capture_command = ['tshark', '-r', f'{pcap_file}', '-o', 'wlan.enable_decryption:TRUE', '-Y', f'udp.port=={UDP_PORT}', '-T', 'fields', '-e', 'data', '-l']
     else:
@@ -151,8 +153,11 @@ def stream(pcap_file):
 
             CODEC.parse(get_safe_payload(payload))
 
-            if (show_image(parsed_frames)):
-                break
+            if video_stream:
+                pyqt.set_image(video_stream, parsed_frames)
+            else:
+                if (show_image(parsed_frames)):
+                    break
 
             if is_frame_end(payload):
                 frame_num += 1
