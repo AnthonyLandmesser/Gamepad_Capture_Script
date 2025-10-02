@@ -1,9 +1,21 @@
 import sys
 import random
 
-from PySide6 import QtWidgets, QtCore
+from PySide6 import QtWidgets, QtCore, QtGui
 
 import stream
+
+class VideoWorker(QtCore.QThread):
+    frame_ready = QtCore.Signal(QtGui.QImage)
+    finished = QtCore.Signal()
+
+    def set_image(self, image):
+        for parsed_frame in parsed_frames:
+            decoded_frames = CODEC.decode(parsed_frame)
+            for decoded_frame in decoded_frames:
+                image = decoded_frame.to_ndarray(format='bgr24')
+                qimage = QtGui.QImage(image, 854, 480, QtGui.QImage.Format.Format_BGR888)
+                self.label.setPixmap(QtGui.QPixmap.fromImage(qimage))
 
 class VideoStream(QtWidgets.QWidget):
     def __init__(self):
@@ -12,21 +24,13 @@ class VideoStream(QtWidgets.QWidget):
         self.resize(854, 480)
         self.setWindowFlag(QtCore.Qt.FramelessWindowHint)
 
-        label = QtWidgets.QLabel("No video source available.", self)
+        self.label = QtWidgets.QLabel("No video source available.", self)
 
         self.layout = QtWidgets.QVBoxLayout()
-        self.layout.addWidget(label)
+        self.layout.addWidget(self.label)
 
         stream.stream(video_stream=self)
         self.show()
-    
-    def set_image(self, image):
-        for parsed_frame in parsed_frames:
-            decoded_frames = CODEC.decode(parsed_frame)
-            for decoded_frame in decoded_frames:
-                image = decoded_frame.to_ndarray(format='bgr24')
-                qimage = QtWidgets.QImage(image, 854, 480, QImage.Format.Format_BGR888)
-                self.label.setPixmap(QPixmap.fromImage(qimage))
 
 class MainContainer(QtWidgets.QWidget):
     def __init__(self):
