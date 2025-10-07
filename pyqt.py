@@ -1,9 +1,6 @@
 import sys
-import random
 
 from PySide6 import QtWidgets, QtCore, QtGui
-
-import stream
 
 class VideoWorker(QtCore.QObject):
     frame_ready = QtCore.Signal(QtGui.QImage)
