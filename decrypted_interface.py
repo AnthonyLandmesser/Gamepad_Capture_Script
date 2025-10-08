@@ -1,14 +1,17 @@
 import os
 import subprocess
+import fcntl
+import struct
 
 PHYSICAL_INTERFACE = 'wlp0s20u4'
 CHANNEL = 157
 
-UDP_PORT = 50020
-CAPTURE_COMMAND = f'tshark -i {PHYSICAL_INTERFACE} -o wlan.enable_decryption:TRUE -Y udp.port=={UDP_PORT} -T fields -e data -l'.split(' ')
+VIRTUAL_INTERFACE = 'tun0'
+IP_ADDRESS = '10.0.0.1/24'
 
-def create_tunnel():
-    tunnel = open()
+TUN_SET_INTERFACE_FLAGS = 0x400454CA
+INTERFACE_REQUEST_FLAGS = 0x1001
+UDP_PORT = 50020
 
 # Put wireless interface in monitor mode
 def setup_physical_interface():
@@ -18,9 +21,26 @@ def setup_physical_interface():
     subprocess.run(f'sudo ip link set {PHYSICAL_INTERFACE} up'.split(' '), check=True)
     subprocess.run(f'sudo iw dev {PHYSICAL_INTERFACE} set channel {CHANNEL}'.split(' '), check=True)
 
+def create_virtual_interface():
+    subprocess.run(f'sudo ip tuntap add dev {VIRTUAL_INTERFACE} mode tun'.split(' '), check=False)
+    subprocess.run(f'sudo ip addr add {IP_ADDRESS} dev {VIRTUAL_INTERFACE}'.split(' '), check=False)
+    subprocess.run(f'sudo ip link set dev {VIRTUAL_INTERFACE} up'.split(' '), check=True)
+
+def tshark_passthrough():
+    tunnel = os.open('/dev/net/tun', os.O_RDWR)
+    interface_request = struct.pack('16sH', VIRTUAL_INTERFACE.encode('utf-8'), INTERFACE_REQUEST_FLAGS)
+    fcntl.ioctl(tunnel, TUN_SET_INTERFACE_FLAGS, interface_request)
+
+    capture_command = f'tshark -i {PHYSICAL_INTERFACE} -o wlan.enable_decryption:TRUE -Y udp.port=={UDP_PORT} -T fields -e data -l'.split(' ')
+
+    with subprocess.Popen(capture_command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1) as proc:
+        for packet in proc.stdout:
+            print("here")
+            os.write(tunnel, packet)
+
 # Main
 def create_decrypted_interface():
-    setup_physical interface()
+    setup_physical_interface()
     create_virtual_interface()
     tshark_passthrough()
 
