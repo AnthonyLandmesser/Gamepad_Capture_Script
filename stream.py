@@ -5,7 +5,7 @@ import cv2
 import time
 
 INTERFACE = 'wlp0s20u4'
-CHANNEL = 157
+CHANNEL = 40
 
 UDP_PORT = 50020
 TSHARK_PATH = '/run/current-system/sw/bin/tshark'
@@ -126,6 +126,7 @@ def stream(pcap_file):
         
         for line in proc.stdout:
             payload = bytes.fromhex(line)
+            # print('here')
 
             if not (is_i_frame(payload) or frame_num >= 0):
                 continue

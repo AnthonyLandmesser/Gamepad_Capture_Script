@@ -3,8 +3,10 @@ import subprocess
 import fcntl
 import struct
 
+from scapy.all import IP, UDP, Raw
+
 PHYSICAL_INTERFACE = 'wlp0s20u4'
-CHANNEL = 157
+CHANNEL = 40
 
 VIRTUAL_INTERFACE = 'tun0'
 IP_ADDRESS = '10.0.0.1/24'
@@ -22,9 +24,10 @@ def setup_physical_interface():
     subprocess.run(f'sudo iw dev {PHYSICAL_INTERFACE} set channel {CHANNEL}'.split(' '), check=True)
 
 def create_virtual_interface():
+    subprocess.run(f'sudo ip link set {VIRTUAL_INTERFACE} down'.split(' '), check=True)
     subprocess.run(f'sudo ip tuntap add dev {VIRTUAL_INTERFACE} mode tun'.split(' '), check=False)
     subprocess.run(f'sudo ip addr add {IP_ADDRESS} dev {VIRTUAL_INTERFACE}'.split(' '), check=False)
-    subprocess.run(f'sudo ip link set dev {VIRTUAL_INTERFACE} up'.split(' '), check=True)
+    subprocess.run(f'sudo ip link set {VIRTUAL_INTERFACE} up'.split(' '), check=True)
 
 def tshark_passthrough():
     tunnel = os.open('/dev/net/tun', os.O_RDWR)
@@ -34,9 +37,14 @@ def tshark_passthrough():
     capture_command = f'tshark -i {PHYSICAL_INTERFACE} -o wlan.enable_decryption:TRUE -Y udp.port=={UDP_PORT} -T fields -e data -l'.split(' ')
 
     with subprocess.Popen(capture_command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1) as proc:
-        for packet in proc.stdout:
-            print("here")
-            os.write(tunnel, packet)
+        print('waiting for packets')
+        sending = False
+        for payload in proc.stdout:
+            if not sending:
+                sending = True
+                print('sending packets')
+            packet = IP(src='192.168.1.10', dst='192.168.1.11', ttl=64)/UDP(sport=50020, dport=50120)/Raw(payload.encode('utf-8'))
+            os.write(tunnel, bytes(packet))
 
 # Main
 def create_decrypted_interface():
@@ -45,7 +53,7 @@ def create_decrypted_interface():
     tshark_passthrough()
 
 if __name__ == "__main__":
-    if os.geteuid() != 0:
-        print("This script must be run as root.")
+    if os.geteuid() == 0:
+        print("This script must not be run with sudo.")
     else:
         create_decrypted_interface()
