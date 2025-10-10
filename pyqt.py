@@ -11,7 +11,9 @@ class VideoWorker(QtCore.QObject):
     def __init__(self):
         super().__init__()
         self.socket = QtNetwork.QUdpSocket()
-        if self.socket.bind(VideoWorker.get_interface_ip(), VIDEO_PORT):
+        ip = VideoWorker.get_interface_ip()
+        if ip:
+            self.socket.bind(ip, VIDEO_PORT)
             print('Successfully setup socket')
         else:
             print('Failed to setup socket')
@@ -37,7 +39,7 @@ class VideoStream(QtWidgets.QWidget):
         super().__init__()
         self.setWindowTitle("Wii U Gamepad Stream")
         self.setFixedSize(854, 480)
-        self.setWindowFlag(QtCore.Qt.FramelessWindowHint)
+        self.setWindowFlag(QtCore.Qt.Window | QtCore.Qt.FramelessWindowHint)
 
         self.label = QtWidgets.QLabel("No video source available.", self)
         self.worker = VideoWorker()
@@ -49,17 +51,8 @@ class VideoStream(QtWidgets.QWidget):
         self.drag_pos = None
 
     def mousePressEvent(self, event):
-        if event.buttons() == QtCore.Qt.MouseButton.LeftButton:
-            self.drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-        else:
-            self.drag_pos = None
-
-    def mouseMoveEvent(self, event):
-        if self.drag_pos:
-            self.move(event.globalPosition().toPoint() - self.drag_pos)
-
-    def mouseReleaseEvent(self, event):
-        self.drag_pos = None
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.window().windowHandle().startSystemMove()
 
 class MainContainer(QtWidgets.QWidget):
     def __init__(self):
@@ -96,6 +89,7 @@ class Main(QtWidgets.QMainWindow):
     def closeEvent(self, event):
         if self.container.output_window:
             self.container.thread.quit()
+            self.container.output_window.worker.socket.close()
             self.container.output_window.close()
         super().closeEvent(event)
 
