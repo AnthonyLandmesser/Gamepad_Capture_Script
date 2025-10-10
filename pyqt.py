@@ -1,9 +1,21 @@
 import sys
 
-from PySide6 import QtWidgets, QtCore, QtGui
+from PySide6 import QtWidgets, QtCore, QtGui, QtNetwork
+
+INTERFACE_NAME = 'tun0'
+VIDEO_PORT = 50120
 
 class VideoWorker(QtCore.QObject):
     frame_ready = QtCore.Signal(QtGui.QImage)
+
+    def __init__(self):
+        super().__init__()
+        self.socket = QtNetwork.QUdpSocket()
+        if self.socket.bind(VideoWorker.get_interface_ip(), VIDEO_PORT):
+            print('Successfully setup socket')
+        else:
+            print('Failed to setup socket')
+        self.socket.readyRead.connect(self.update_frame)
 
     def update_frame(self):
         parsed_frames = []
@@ -13,6 +25,12 @@ class VideoWorker(QtCore.QObject):
                 image = decoded_frame.to_ndarray(format='bgr24')
                 qimage = QtGui.QImage(image, 854, 480, QtGui.QImage.Format.Format_BGR888)
                 self.frame_ready.emit(qimage.copy())
+
+    def get_interface_ip():
+        interface = QtNetwork.QNetworkInterface.interfaceFromName(INTERFACE_NAME)
+        if interface.isValid():
+            for entry in interface.addressEntries():
+                return entry.ip()
 
 class VideoStream(QtWidgets.QWidget):
     def __init__(self):
