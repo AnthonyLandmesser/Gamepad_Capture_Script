@@ -49,7 +49,7 @@ def get_headers(payload, frame_num):
         # print("I frame sent")
         return FRAME_START + I_SLICE_HEADER
     else:
-        return FRAME_START + bytes([P_SLICE_HEADER[0], P_SLICE_HEADER[1] | (frame_num >> 3), P_SLICE_HEADER[2], P_SLICE_HEADER[3] | (frame_num << 5) & 0xff])
+        return FRAME_START + bytes([P_SLICE_HEADER[0], P_SLICE_HEADER[1] | (frame_num >> 3), P_SLICE_HEADER[2] | (frame_num << 5) & 0xff, P_SLICE_HEADER[3]])
 
 def get_safe_payload(payload):
     safe_payload = payload[16:18]

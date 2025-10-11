@@ -25,7 +25,6 @@ def setup_physical_interface():
     subprocess.run(f'sudo iw dev {PHYSICAL_INTERFACE} set channel {CHANNEL}'.split(' '), check=True)
 
 def create_virtual_interface():
-    subprocess.run(f'sudo ip link set {VIRTUAL_INTERFACE} down'.split(' '), check=True)
     subprocess.run(f'sudo ip tuntap add dev {VIRTUAL_INTERFACE} mode tun'.split(' '), check=False)
     subprocess.run(f'sudo ip addr add {IP_ADDRESS} dev {VIRTUAL_INTERFACE}'.split(' '), check=False)
     subprocess.run(f'sudo ip link set {VIRTUAL_INTERFACE} up'.split(' '), check=True)
